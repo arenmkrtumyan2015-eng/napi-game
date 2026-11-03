@@ -85,6 +85,9 @@ canvas{width:min(94vw,360px);border-radius:16px;background:#fff;touch-action:non
 .result p{margin:2px 0}
 .rowbtn{display:flex;gap:10px;margin-top:10px}
 .rec{display:flex;justify-content:space-between;align-items:center}
+.rowbtn .btn{flex:1}
+.hole{aspect-ratio:1;border:0;border-radius:16px;background:#cfe9dc;font-size:38px;box-shadow:inset 0 3px 0 rgba(0,0,0,.08)}
+.sp{padding:34px 0;font-size:48px;border-radius:18px;transition:transform .15s,filter .15s}
 </style>
 </head>
 <body>
@@ -168,7 +171,7 @@ function petSVG(mood, size = 180) {
 /* ---------- интерфейс ---------- */
 let tab = 'pet', shopTab = 'food', lastKey = '', resetArm = false;
 const TABS = [['pet', '🌱', 'Напи'], ['shop', '🛒', 'Магазин'], ['games', '🎮', 'Игры'], ['top', '🏆', 'Рекорды']];
-$('#app').innerHTML = `<div class="hud"><div class="pill">🪙 <b id="hc"></b></div><div class="pill">❤️ <b id="hh"></b></div></div><main id="main"></main><nav>${TABS.map(t => `<button data-t="${t[0]}"><span>${t[1]}</span>${t[2]}</button>`).join('')}</nav>`;
+$('#app').innerHTML = `<div class="hud"><div class="pill">🪙 <b id="hc"></b></div><div class="pill">❤️ <b id="hh"></b></div><button class="pill" id="help" style="border:0;font-size:16px">❓</button></div><main id="main"></main><nav>${TABS.map(t => `<button data-t="${t[0]}"><span>${t[1]}</span>${t[2]}</button>`).join('')}</nav>`;
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => { haptic('light'); go(b.dataset.t); });
 function updateHud() { $('#hc').textContent = S.coins; $('#hh').textContent = S.hearts; }
 function go(t) { tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); render(); }
@@ -256,10 +259,11 @@ function renderGames() {
 function renderTop() {
   $('#main').innerHTML = `<h3>🏆 Рекорды</h3><div class="card"><div class="rec"><b>Уровень Напи</b><span class="lvl">${S.lvl}</span></div></div>` +
     GAMES.map(g => `<div class="card rec"><span>${g.e} ${g.n}</span><b>${S.best[g.id] ? S.best[g.id] + ' ' + g.unit : '—'}</b></div>`).join('') +
-    `<p style="text-align:center"><button class="btn ghost small" id="reset">Начать заново</button></p>`;
+    `<div class="card row"><div><b>👥 Друзья</b><small style="display:block;color:var(--hint);font-size:12px;margin-top:2px">Позови друга: тебе +50 🪙 и +1 ❤️ (один раз), другу +100 🪙</small></div><button class="btn small" id="inv">Позвать</button></div><p style="text-align:center"><button class="btn ghost small" id="how">❓ Как играть</button> <button class="btn ghost small" id="reset">Начать заново</button></p>`;
+  $('#inv').onclick = invite; $('#how').onclick = () => openTut();
   $('#reset').onclick = () => {
     if (!resetArm) { resetArm = true; $('#reset').textContent = 'Точно сбросить всё?'; return; }
-    resetArm = false; S = Object.assign({}, DEF, { t: Date.now(), bag: { melon: 1 }, best: {} }); save(); toast('Прогресс сброшен'); render();
+    resetArm = false; S = Object.assign({}, DEF, { t: Date.now(), bag: { melon: 1 }, best: {}, tut: 1, shared: S.shared, welcome: S.welcome }); save(); toast('Прогресс сброшен'); render();
   };
 }
 
@@ -387,12 +391,100 @@ function gRhythm(el, done) {
   return () => { over = true; clearInterval(iv); cancelAnimationFrame(raf); };
 }
 
+/* ---------- новые игры ---------- */
+function gCatch(el, done) {
+  el.innerHTML = `<div class="ghud">Морковки: <b id="gs">0</b> · <b id="gt">30</b> с</div><canvas id="cv" width="360" height="300"></canvas><p class="hint">Води пальцем: лови 🥕, уворачивайся от 🪨</p>`;
+  const cv = $('#cv', el), c = cv.getContext('2d');
+  let x = 180, s = 0, t = 30, items = [], f = 0, raf = 0, over = false;
+  cv.onpointerdown = cv.onpointermove = e => { const r = cv.getBoundingClientRect(); x = clamp((e.clientX - r.left) * 360 / r.width, 24, 336); };
+  const end = () => { if (over) return; over = true; clearInterval(iv); cancelAnimationFrame(raf); setTimeout(() => done(s), 300); };
+  const iv = setInterval(() => { t--; $('#gt', el).textContent = t; if (t <= 0) end(); }, 1000);
+  function loop() {
+    if (over) return; f++;
+    if (f % 24 === 0) items.push({ x: 20 + Math.random() * 320, y: -20, e: Math.random() < .7 ? '🥕' : '🪨', v: 2.5 + Math.random() * 2 + (30 - t) * .04 });
+    items.forEach(i => i.y += i.v);
+    items = items.filter(i => {
+      if (i.y > 265 && i.y < 295 && Math.abs(i.x - x) < 34) { if (i.e === '🥕') { s++; haptic('light'); } else { s = Math.max(0, s - 2); haptic('error'); } $('#gs', el).textContent = s; return false; }
+      return i.y < 320;
+    });
+    c.fillStyle = '#eaf7f0'; c.fillRect(0, 0, 360, 300); c.font = '28px serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    items.forEach(i => c.fillText(i.e, i.x, i.y)); c.fillText('🧺', x, 282);
+    raf = requestAnimationFrame(loop);
+  }
+  raf = requestAnimationFrame(loop);
+  return () => { over = true; clearInterval(iv); cancelAnimationFrame(raf); };
+}
+
+function gWhack(el, done) {
+  let t = 30, s = 0, over = false, cur = -1, it = '';
+  el.innerHTML = `<div class="ghud"><b id="gt">30</b> с · очки: <b id="gs">0</b></div><div id="pgrid" style="grid-template-columns:repeat(3,1fr)">${Array.from({ length: 9 }, (_, i) => `<button class="hole"></button>`).join('')}</div><p class="hint">Тапай 🥕 (+1), не трогай 💣 (−2)</p>`;
+  const H = [...el.querySelectorAll('.hole')];
+  const show = () => { H.forEach(h => h.textContent = ''); cur = Math.random() * 9 | 0; it = Math.random() < .75 ? '🥕' : '💣'; H[cur].textContent = it; };
+  H.forEach((h, i) => h.onpointerdown = () => {
+    if (over || i !== cur || !it) return;
+    if (it === '🥕') { s++; haptic('light'); } else { s = Math.max(0, s - 2); haptic('error'); }
+    it = ''; h.textContent = '✨'; $('#gs', el).textContent = s;
+  });
+  const clean = () => { clearInterval(mv); clearInterval(iv); };
+  show(); const mv = setInterval(show, 700);
+  const iv = setInterval(() => { t--; $('#gt', el).textContent = t; if (t <= 0) { clean(); over = true; done(s); } }, 1000);
+  return () => { over = true; clean(); };
+}
+
+function gSimon(el, done) {
+  const E = ['🍓', '🍌', '🍉', '🌙'], C = ['#ffb3c6', '#ffe27a', '#9be3c4', '#cbbcf5'];
+  let seq = [], pos = 0, lock = true, over = false; const tm = [];
+  el.innerHTML = `<div class="ghud">Пройдено раундов: <b id="gs">0</b></div><div id="pgrid" style="grid-template-columns:repeat(2,1fr)">${E.map((e, i) => `<button class="pad sp" style="background:${C[i]}">${e}</button>`).join('')}</div><p class="hint" id="sh"></p>`;
+  const B = [...el.querySelectorAll('.sp')];
+  const flash = i => { B[i].style.transform = 'scale(.9)'; B[i].style.filter = 'brightness(1.12)'; tm.push(setTimeout(() => { B[i].style.transform = ''; B[i].style.filter = ''; }, 300)); };
+  const play = () => {
+    lock = true; pos = 0; seq.push(Math.random() * 4 | 0); $('#sh', el).textContent = 'Запоминай…';
+    seq.forEach((n, k) => tm.push(setTimeout(() => { flash(n); haptic('light'); }, 700 + k * 600)));
+    tm.push(setTimeout(() => { lock = false; $('#sh', el).textContent = 'Твоя очередь!'; }, 700 + seq.length * 600));
+  };
+  B.forEach((b, i) => b.onpointerdown = () => {
+    if (lock || over) return; flash(i);
+    if (i !== seq[pos]) { over = true; haptic('error'); tm.push(setTimeout(() => done(seq.length - 1), 500)); return; }
+    if (++pos === seq.length) { $('#gs', el).textContent = seq.length; lock = true; tm.push(setTimeout(play, 700)); }
+  });
+  play();
+  return () => { over = true; tm.forEach(clearTimeout); };
+}
+
+/* ---------- обучение и друзья ---------- */
+const BOT_LINK = 'https://t.me/napi_pet_bot/napi';
+const TUT = [
+  ['🐰', 'Знакомься, это Напи!', 'Тапай по нему, чтобы погладить. Каждые 15 поглаживаний дарят ❤️ и опыт.'],
+  ['🍽️', 'Заботься о нём', 'Следи за шкалами: сытость, настроение и энергия. Корми, дари игрушки и укладывай спать 🌙.'],
+  ['🎮', 'Играй и зарабатывай', 'В «Играх» 8 мини-игр. За результат получаешь 🪙 и ❤️. Одна игра тратит 12 энергии. Не закрывай игру крестиком: награда выдаётся в конце.'],
+  ['🛒', 'Трать и расти', 'В магазине покупай еду и игрушки. От игр и ухода растёт уровень: +50 🪙 за каждый новый.'],
+  ['👥', 'Позови друзей', 'Отправь другу ссылку: тебе +50 🪙 и +1 ❤️, а другу +100 🪙 в подарок.']
+];
+function openTut(i = 0) {
+  S.tut = 1; save(); $('#sheet').classList.add('on'); const t = TUT[i], last = i === TUT.length - 1;
+  $('#sbody').innerHTML = `<div style="text-align:center"><div style="font-size:56px">${t[0]}</div><h3>${t[1]}</h3><p>${t[2]}</p><p class="hint">${i + 1} / ${TUT.length}</p></div><div class="rowbtn">` +
+    (last ? `<button class="btn ghost" id="tinv">👥 Позвать</button><button class="btn" id="tn">Играть!</button>` : `<button class="btn ghost" id="tskip">Пропустить</button><button class="btn" id="tn">Дальше</button>`) + `</div>`;
+  $('#tn').onclick = () => last ? closeSheet() : openTut(i + 1);
+  if (last) $('#tinv').onclick = invite; else $('#tskip').onclick = closeSheet;
+}
+function invite() {
+  const url = BOT_LINK + '?startapp=friend', text = 'Я ухаживаю за кроликом Напи 🐰 Заходи, играй со мной!';
+  const link = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text);
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(link);
+  else if (navigator.share) navigator.share({ text, url }).catch(() => {});
+  else { try { navigator.clipboard.writeText(url); toast('Ссылка скопирована 📋'); } catch (e) { window.open(link, '_blank'); } }
+  if (!S.shared) { S.shared = 1; S.coins += 50; S.hearts += 1; save(); updateHud(); setTimeout(() => toast('+50 🪙 и +1 ❤️ за приглашение'), 500); }
+}
+
 const GAMES = [
   { id: 'clicker', e: '👆', n: 'Кликер', d: 'Тапай по Напи 30 секунд и получай сердечки', run: gClicker, unit: 'тапов', coins: s => s * 2, hearts: s => Math.floor(s / 25) },
   { id: '2048', e: '🔢', n: '2048', d: 'Объединяй числа и ставь рекорды', run: g2048, unit: 'очков', coins: s => Math.floor(s / 8), hearts: s => Math.floor(s / 600) },
   { id: 'pairs', e: '🃏', n: 'Найди пары', d: 'Запомни, где какая карточка', run: gPairs, unit: 'очков', coins: s => s, hearts: s => s >= 80 ? 2 : s >= 50 ? 1 : 0 },
   { id: 'runner', e: '🏁', n: 'Бег с препятствиями', d: 'Прыгай через камни, бананы и ящики', run: gRunner, unit: 'м', coins: s => s * 2, hearts: s => Math.floor(s / 40) },
-  { id: 'rhythm', e: '🎵', n: 'Ритм', d: 'Лови ноты в такт — 4 дорожки', run: gRhythm, unit: 'очков', coins: s => Math.floor(s / 3), hearts: s => Math.floor(s / 150) }
+  { id: 'rhythm', e: '🎵', n: 'Ритм', d: 'Лови ноты в такт — 4 дорожки', run: gRhythm, unit: 'очков', coins: s => Math.floor(s / 3), hearts: s => Math.floor(s / 150) },
+  { id: 'catch', e: '🧺', n: 'Ловец морковок', d: 'Води корзинку и лови морковки', run: gCatch, unit: 'морк.', coins: s => s * 8, hearts: s => Math.floor(s / 10) },
+  { id: 'whack', e: '🕳️', n: 'Кроличьи норки', d: 'Тапай морковки, обходи бомбы', run: gWhack, unit: 'очков', coins: s => s * 8, hearts: s => Math.floor(s / 10) },
+  { id: 'simon', e: '🧠', n: 'Повтори за Напи', d: 'Запомни и повтори порядок', run: gSimon, unit: 'раундов', coins: s => s * 25, hearts: s => Math.floor(s / 4) }
 ];
 
 function openGame(id) {
@@ -419,6 +511,9 @@ $('#gclose').onclick = closeGame;
 
 /* ---------- старт ---------- */
 tick(); go('pet');
+$('#help').onclick = () => openTut();
+if (!S.tut) openTut();
+try { if (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param === 'friend' && !S.welcome) { S.welcome = 1; S.coins += 100; save(); updateHud(); setTimeout(() => toast('Бонус от друга: +100 🪙'), 700); } } catch (e) {}
 setInterval(() => { tick(); updateHud(); refreshPet(); }, 3000);
 </script>
 </body>
